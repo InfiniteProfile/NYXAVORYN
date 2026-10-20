@@ -148,8 +148,14 @@
     const cardHeight = Math.max(250, state.averageCardHeight);
     const columns = getColumns();
     const rowHeight = cardHeight + 17;
-    const approxIndex = Math.max(1, Math.floor(window.scrollY / rowHeight) * columns + 1);
-    return Math.max(1, Math.min(state.generated, approxIndex - KEEP_BEHIND * columns));
+    // topSpacer is anchored at the beginning of the logical feed, unlike feed.offsetTop
+    // which moves as the virtual top spacer changes height.
+    const feedOrigin = topSpacer.getBoundingClientRect().top + window.scrollY;
+    const relativeScroll = Math.max(0, window.scrollY - feedOrigin);
+    const approxIndex = Math.max(1, Math.floor(relativeScroll / rowHeight) * columns + 1);
+    const requestedStart = Math.max(1, Math.min(state.generated, approxIndex - KEEP_BEHIND));
+    // Keep the rendered window aligned to complete grid rows across breakpoint changes.
+    return Math.max(1, Math.floor((requestedStart - 1) / columns) * columns + 1);
   }
   function getColumns() {
     const w = window.innerWidth;
@@ -179,7 +185,7 @@
       const columns = getColumns();
       const rowHeight = Math.max(250, state.averageCardHeight) + 17;
       topSpacer.style.height = Math.max(0, Math.floor((normalizedStart - 1) / columns) * rowHeight) + "px";
-      bottomSpacer.style.height = Math.max(0, Math.floor((state.generated - end) / columns) * rowHeight) + "px";
+      bottomSpacer.style.height = Math.max(0, Math.ceil((state.generated - end) / columns) * rowHeight) + "px";
       topSpacer.style.display = normalizedStart > 1 ? "block" : "none";
       bottomSpacer.style.display = end < state.generated ? "block" : "none";
       shownCount.textContent = state.generated.toLocaleString("en-US") + " INDEXED";
@@ -199,11 +205,11 @@
       else requestAnimationFrame(() => { if (document.documentElement.scrollHeight - (window.scrollY + window.innerHeight) < PREFETCH_PX && !state.busy) generateBatch(); });
     }
     const top = window.scrollY;
+    const feedOrigin = topSpacer.getBoundingClientRect().top + window.scrollY;
+    const relativeScroll = Math.max(0, top - feedOrigin);
+    const visibleApprox = Math.floor(relativeScroll / Math.max(250, state.averageCardHeight + 17)) * getColumns() + 1;
     if (top < 800 && state.renderStart > 1) ensureWindow(false);
-    else {
-      const visibleApprox = Math.floor(top / Math.max(250, state.averageCardHeight + 17)) * getColumns() + 1;
-      if (Math.abs(visibleApprox - state.renderStart) > WINDOW_SIZE / 2) ensureWindow(false);
-    }
+    else if (Math.abs(visibleApprox - state.renderStart) > WINDOW_SIZE / 2) ensureWindow(false);
   }
 
   function openSearch() {
