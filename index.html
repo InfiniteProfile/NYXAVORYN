@@ -17,7 +17,10 @@
   <header class="topbar">
     <a class="wordmark" href="#" aria-label="NYXAVORYN home"><span class="mark">N</span><span>NYXAVORYN</span></a>
     <div class="top-meta"><span class="live-dot"></span><span>ARCHIVE ONLINE</span><span class="meta-divider">/</span><span id="shown-count">INITIALIZING</span></div>
-    <button class="search-trigger" id="search-open" aria-label="Search identity" title="Search identity"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.2 4.2"></path></svg></button>
+    <div class="top-actions">
+      <button class="auto-generate" id="auto-generate" type="button" aria-pressed="false" title="Start automatic archive exploration"><span class="auto-symbol" aria-hidden="true">✦</span><span class="auto-label">AUTO GENERATE</span><span class="auto-status" aria-hidden="true"></span></button>
+      <button class="search-trigger" id="search-open" aria-label="Search identity" title="Search identity"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.2 4.2"></path></svg></button>
+    </div>
   </header>
 
   <main>
@@ -34,7 +37,6 @@
 
     <div id="virtual-top" aria-hidden="true"></div>
     <section id="feed" class="profile-grid" aria-label="Infinite identity profiles"></section>
-    <div id="virtual-bottom" aria-hidden="true"></div>
     <div id="sentinel" class="sentinel" aria-hidden="true"><span></span><span></span><span></span></div>
   </main>
 
@@ -62,6 +64,6 @@
     </div>
   </div>
   <footer class="footer"><span>NYXAVORYN / ARCHIVE PROTOCOL 01</span><span>THE INDEX CONTINUES <b>∞</b></span></footer>
-  <script src="script.js"></script>
+  <script src="script.js?v=20261021-infinite-fix-2"></script>
 </body>
 </html>

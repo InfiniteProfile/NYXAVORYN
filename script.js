@@ -4,7 +4,6 @@
   const feed = document.getElementById("feed");
   const sentinel = document.getElementById("sentinel");
   const topSpacer = document.getElementById("virtual-top");
-  const bottomSpacer = document.getElementById("virtual-bottom");
   const shownCount = document.getElementById("shown-count");
   const searchOverlay = document.getElementById("search-overlay");
   const searchInput = document.getElementById("identity-input");
@@ -13,9 +12,10 @@
   const detailContent = document.getElementById("detail-content");
 
   const BATCH_SIZE = 18;
-  const WINDOW_SIZE = 48;
-  const KEEP_BEHIND = 18;
-  const PREFETCH_PX = 1500;
+  const WINDOW_SIZE = 96;
+  const PREFETCH_PX = 2600;
+  const SAFE_PRUNE_PX = 1.25;
+  const AUTO_SCROLL_SPEED = 58;
   const FRAG_A = ["Nyx","Vey","Astra","Noct","Vel","Ery","Zyra","Oryn","Vael","Iri","Kael","Xylo","Auri","Thal","Mira","Kyr","Sora","Elu","Riven","Aeon","Lumi","Drae","Vanta","Oris","Syl","Nexa","Ophi","Cyr","Aven","Zeph","Lyra","Qori","Neri","Vex","Alth","Yva"];
   const FRAG_B = ["avoryn","tharis","elune","oryx","aevum","ivara","ethiel","onyx","arion","uvane","ephyra","aziel","ovant","yriel","alara","isryn","evara","athen","oriel","yss","avelle","ethra","ionyx","aeris","uviel","arune","evryn","alith","orune","yvara","eon","aeris"];
   const FRAG_C = ["-V","-IX","-A","-01","-R","-Ø","-K","-N","-X","-Æ","-7","-Q","-S","-TH","-E","-LY"];
@@ -26,7 +26,7 @@
   const ROLES = ["Keeper of Unwritten Histories","Witness to the Quiet Collapse","Curator of Unstable Dreams","Navigator of the Hollow Between","Interpreter of Ancient Signals","Guardian of Unchosen Paths","Observer of the Ninth Horizon","Archivist of Lost Tomorrows","Cartographer of Inner Space","Custodian of Silent Worlds"];
   const COLORS = ["#a77bff","#7be4ed","#e7a4d7","#9db6ff","#d8b77c","#89e2bd","#ff9eaf","#b7a2ff","#8cc8ff","#c9d0e8","#df91ff","#83d4d0"];
   const SHAPES = ["arc","halo","orbit","shard","ring","crown"];
-  const state = { generated: 0, busy: false, renderStart: 0, rendered: [], virtualizing: false, pendingSearch: null, activeDetail: null, lastFocus: null, averageCardHeight: 360, observer: null, resizeObserver: null };
+  const state = { generated: 0n, busy: false, firstRenderedId: 1n, topSpacerHeight: 0, runwayPending: false, activeDetail: null, lastFocus: null, averageCardHeight: 360, observer: null, resizeObserver: null, autoActive: false, autoFrame: 0, autoLastTime: 0 };
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function hashString(s) {
@@ -123,93 +123,201 @@
   function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
   function escapeAttr(s) { return escapeHTML(s); }
 
-  function generateBatch() {
-    if (state.busy) return;
-    state.busy = true;
-    try {
-      const start = state.generated + 1;
-      const end = start + BATCH_SIZE - 1;
-      state.generated = end;
-      if (state.rendered.length === 0) state.renderStart = 1;
-      ensureWindow(true);
-      shownCount.textContent = state.generated.toLocaleString("en-US") + " INDEXED";
-    } catch (err) {
-      console.error("Archive batch recovered from error:", err);
-      // Move forward rather than allowing a single malformed record to freeze generation.
-      state.generated += BATCH_SIZE;
-      requestAnimationFrame(() => { try { ensureWindow(true); } catch (_) {} });
-    } finally {
-      state.busy = false;
-    }
-  }
-
-  function desiredStart() {
-    if (state.generated <= WINDOW_SIZE) return 1;
-    const cardHeight = Math.max(250, state.averageCardHeight);
-    const columns = getColumns();
-    const rowHeight = cardHeight + 17;
-    // topSpacer is anchored at the beginning of the logical feed, unlike feed.offsetTop
-    // which moves as the virtual top spacer changes height.
-    const feedOrigin = topSpacer.getBoundingClientRect().top + window.scrollY;
-    const relativeScroll = Math.max(0, window.scrollY - feedOrigin);
-    const approxIndex = Math.max(1, Math.floor(relativeScroll / rowHeight) * columns + 1);
-    const requestedStart = Math.max(1, Math.min(state.generated, approxIndex - KEEP_BEHIND));
-    // Keep the rendered window aligned to complete grid rows across breakpoint changes.
-    return Math.max(1, Math.floor((requestedStart - 1) / columns) * columns + 1);
-  }
   function getColumns() {
     const w = window.innerWidth;
     if (w >= 1500) return 4;
     if (w <= 850) return 2;
     return 3;
   }
-  function ensureWindow(appendIfNeeded) {
-    if (state.virtualizing) return;
-    state.virtualizing = true;
+
+  function updateGeneratedCount() {
+    shownCount.textContent = state.generated.toLocaleString("en-US") + " INDEXED";
+  }
+
+  // Append-only batches avoid rebuilding the visible feed. The sentinel always follows
+  // the newest actual cards, so it can never point at an empty virtual bottom spacer.
+  function appendBatch() {
+    if (state.busy) return false;
+    state.busy = true;
     try {
-      const start = desiredStart();
-      // Keep a modest DOM window around the viewport; records are reproducible, so recycling is lossless.
-      const maxStart = Math.max(1, state.generated - WINDOW_SIZE + 1);
-      const normalizedStart = Math.min(start, maxStart);
-      const end = Math.min(state.generated, normalizedStart + WINDOW_SIZE - 1);
+      const start = state.generated + 1n;
+      const end = start + BigInt(BATCH_SIZE) - 1n;
       const fragment = document.createDocumentFragment();
-      for (let i = normalizedStart; i <= end; i++) {
-        const p = makeProfile(String(i));
+      for (let id = start; id <= end; id += 1n) {
+        const p = makeProfile(id.toString());
         const wrapper = document.createElement("div");
-        wrapper.innerHTML = cardHTML(p, i);
+        wrapper.innerHTML = cardHTML(p, id.toString());
+        const card = wrapper.firstElementChild;
+        if (card) fragment.appendChild(card);
+      }
+      feed.appendChild(fragment);
+      state.generated = end;
+      if (state.firstRenderedId === 1n && state.generated === BigInt(BATCH_SIZE)) {
+        // The archive begins with a real, immediately usable first batch.
+        topSpacer.style.height = "0px";
+      }
+      updateGeneratedCount();
+      return true;
+    } catch (err) {
+      console.error("Identity batch recovered from error:", err);
+      return false;
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  function runwayDistance() {
+    return sentinel.getBoundingClientRect().top - window.innerHeight;
+  }
+
+  function ensureRunway() {
+    if (state.runwayPending || state.busy) return;
+    state.runwayPending = true;
+    requestAnimationFrame(() => {
+      state.runwayPending = false;
+      let batches = 0;
+      try {
+        // Fill ahead before the reader reaches the last rendered row. The guard prevents
+        // a malformed layout from creating an unbounded synchronous loop.
+        while (batches < 10 && runwayDistance() < PREFETCH_PX) {
+          if (!appendBatch()) break;
+          batches++;
+          pruneOldRows();
+        }
+      } catch (err) {
+        console.error("Runway recovery:", err);
+      }
+      // Keep retrying while the sentinel is inside the prefetch zone. This is deliberately
+      // independent of IntersectionObserver so a missed callback cannot stall generation.
+      if (runwayDistance() < PREFETCH_PX) {
+        window.setTimeout(ensureRunway, 40);
+      }
+    });
+  }
+
+  // Persistent watchdog: repairs stalled observers, rapid-scroll races, and browser
+  // layout timing issues. It checks distance to the real sentinel, never a fixed ID count.
+  function generationWatchdog() {
+    if (!document.hidden) {
+      try {
+        if (runwayDistance() < PREFETCH_PX && !state.busy && !state.runwayPending) ensureRunway();
+      } catch (err) {
+        console.error("Generation watchdog recovered:", err);
+        window.setTimeout(ensureRunway, 50);
+      }
+    }
+    window.setTimeout(generationWatchdog, 180);
+  }
+
+  function setTopSpacerHeight(value) {
+    state.topSpacerHeight = Math.max(0, value);
+    topSpacer.style.height = state.topSpacerHeight + "px";
+    topSpacer.style.width = "100%";
+  }
+
+  function rowGroup(cards) {
+    if (!cards.length) return 0;
+    const firstTop = cards[0].getBoundingClientRect().top;
+    let count = 1;
+    // Slight tolerance permits a hovered/animated card in the first row.
+    while (count < cards.length && Math.abs(cards[count].getBoundingClientRect().top - firstTop) < 7) count++;
+    return count;
+  }
+
+  function pruneOldRows() {
+    // Remove only complete rows comfortably above the viewport. For every removed row,
+    // add its measured row pitch to the leading spacer; visible content stays in place.
+    let cards = Array.from(feed.querySelectorAll(".profile-card"));
+    const maxLoops = 24;
+    let loops = 0;
+    while (cards.length > WINDOW_SIZE && loops < maxLoops) {
+      const count = rowGroup(cards);
+      if (!count || cards.length - count < WINDOW_SIZE - getColumns()) break;
+      const firstRect = cards[0].getBoundingClientRect();
+      const lastRect = cards[count - 1].getBoundingClientRect();
+      if (lastRect.bottom >= -window.innerHeight * SAFE_PRUNE_PX) break;
+      // offsetTop uses layout coordinates, so entrance/hover transforms cannot introduce
+      // a few pixels of cumulative scroll drift in the spacer math.
+      const rowPitch = cards[count].offsetTop - cards[0].offsetTop;
+      if (!(rowPitch > 0)) break;
+      const newFirstId = cards[count].dataset.id;
+      for (let i = 0; i < count; i++) cards[i].remove();
+      state.firstRenderedId = BigInt(newFirstId);
+      setTopSpacerHeight(state.topSpacerHeight + rowPitch);
+      cards = Array.from(feed.querySelectorAll(".profile-card"));
+      loops++;
+    }
+  }
+
+  function restoreOlderRows() {
+    // The leading spacer represents identities pruned from the DOM. When the visitor
+    // scrolls back toward it, regenerate those exact IDs so older profiles remain browsable.
+    let loops = 0;
+    const maxLoops = 12;
+    while (state.firstRenderedId > 1n && loops < maxLoops) {
+      const spacerBottom = topSpacer.getBoundingClientRect().bottom;
+      const restoreLead = Math.max(300, Math.min(PREFETCH_PX, window.innerHeight * 0.8));
+      if (spacerBottom <= -restoreLead) break;
+      const oldFirst = feed.firstElementChild;
+      if (!oldFirst) break;
+      const oldTop = oldFirst.getBoundingClientRect().top;
+      const take = Math.min(getColumns(), Number(state.firstRenderedId - 1n));
+      const start = state.firstRenderedId - BigInt(take);
+      const fragment = document.createDocumentFragment();
+      for (let id = start; id < state.firstRenderedId; id += 1n) {
+        const identity = id.toString();
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = cardHTML(makeProfile(identity), identity);
         if (wrapper.firstElementChild) fragment.appendChild(wrapper.firstElementChild);
       }
-      feed.replaceChildren(fragment);
-      state.renderStart = normalizedStart;
-      state.rendered = [];
-      const columns = getColumns();
-      const rowHeight = Math.max(250, state.averageCardHeight) + 17;
-      topSpacer.style.height = Math.max(0, Math.floor((normalizedStart - 1) / columns) * rowHeight) + "px";
-      bottomSpacer.style.height = Math.max(0, Math.ceil((state.generated - end) / columns) * rowHeight) + "px";
-      topSpacer.style.display = normalizedStart > 1 ? "block" : "none";
-      bottomSpacer.style.display = end < state.generated ? "block" : "none";
-      shownCount.textContent = state.generated.toLocaleString("en-US") + " INDEXED";
-      // Ensure there is always a runway ahead of the reader.
-      if (appendIfNeeded && state.generated - end < BATCH_SIZE * 2) {
-        queueMicrotask(() => { if (!state.busy) generateBatch(); });
-      }
-    } finally {
-      state.virtualizing = false;
+      feed.insertBefore(fragment, oldFirst);
+      // Measure the actual layout shift caused by the newly inserted row, then remove
+      // precisely that much spacer. The old first card keeps its exact document position.
+      const shift = oldFirst.getBoundingClientRect().top - oldTop;
+      if (shift > 0) setTopSpacerHeight(state.topSpacerHeight - shift);
+      state.firstRenderedId = BigInt(feed.firstElementChild.dataset.id);
+      loops++;
     }
   }
 
   function onScroll() {
-    const remaining = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
-    if (remaining < PREFETCH_PX) {
-      if (!state.busy) generateBatch();
-      else requestAnimationFrame(() => { if (document.documentElement.scrollHeight - (window.scrollY + window.innerHeight) < PREFETCH_PX && !state.busy) generateBatch(); });
+    restoreOlderRows();
+    pruneOldRows();
+    ensureRunway();
+  }
+
+  function autoLoop(timestamp) {
+    if (!state.autoActive) return;
+    if (!state.autoLastTime) state.autoLastTime = timestamp;
+    const delta = Math.min(48, Math.max(0, timestamp - state.autoLastTime));
+    state.autoLastTime = timestamp;
+    // Leave the page still while visitors read a profile or enter a search identifier.
+    const modalOpen = detailOverlay.classList.contains("open") || searchOverlay.classList.contains("open");
+    if (!modalOpen && !document.hidden) {
+      window.scrollBy(0, AUTO_SCROLL_SPEED * delta / 1000);
+      ensureRunway();
     }
-    const top = window.scrollY;
-    const feedOrigin = topSpacer.getBoundingClientRect().top + window.scrollY;
-    const relativeScroll = Math.max(0, top - feedOrigin);
-    const visibleApprox = Math.floor(relativeScroll / Math.max(250, state.averageCardHeight + 17)) * getColumns() + 1;
-    if (top < 800 && state.renderStart > 1) ensureWindow(false);
-    else if (Math.abs(visibleApprox - state.renderStart) > WINDOW_SIZE / 2) ensureWindow(false);
+    state.autoFrame = requestAnimationFrame(autoLoop);
+  }
+
+  function setAutoGenerate(active) {
+    state.autoActive = active;
+    const button = document.getElementById("auto-generate");
+    const label = button.querySelector(".auto-label");
+    const symbol = button.querySelector(".auto-symbol");
+    button.setAttribute("aria-pressed", String(active));
+    button.title = active ? "Pause automatic archive exploration" : "Start automatic archive exploration";
+    label.textContent = active ? "PAUSE AUTO" : "AUTO GENERATE";
+    symbol.textContent = active ? "Ⅱ" : "✦";
+    if (active) {
+      state.autoLastTime = 0;
+      if (!state.autoFrame) state.autoFrame = requestAnimationFrame(autoLoop);
+      ensureRunway();
+    } else {
+      if (state.autoFrame) cancelAnimationFrame(state.autoFrame);
+      state.autoFrame = 0;
+      state.autoLastTime = 0;
+    }
   }
 
   function openSearch() {
@@ -245,6 +353,7 @@
   }
 
   document.getElementById("search-open").addEventListener("click", openSearch);
+  document.getElementById("auto-generate").addEventListener("click", () => setAutoGenerate(!state.autoActive));
   document.getElementById("search-close").addEventListener("click", closeSearch);
   document.getElementById("detail-back").addEventListener("click", closeDetail);
   searchOverlay.addEventListener("click", e => { if (e.target === searchOverlay) closeSearch(); });
@@ -278,19 +387,21 @@
   });
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", () => {
-    ensureWindow(false);
-    onScroll();
+    restoreOlderRows();
+    pruneOldRows();
+    ensureRunway();
   }, { passive: true });
 
-  // IntersectionObserver is a prefetch hint, not the only generation mechanism.
+  // IntersectionObserver is an acceleration hint. Scroll-distance and timed retry paths
+  // remain active if observer callbacks are missed or unsupported.
   if ("IntersectionObserver" in window) {
     state.observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting) && !state.busy) generateBatch();
-    }, { rootMargin: "1200px 0px" });
+      if (entries.some(entry => entry.isIntersecting)) ensureRunway();
+    }, { rootMargin: "1700px 0px" });
     state.observer.observe(sentinel);
   }
   if ("ResizeObserver" in window) {
-    state.resizeObserver = new ResizeObserver(entries => {
+    state.resizeObserver = new ResizeObserver(() => {
       const cards = feed.querySelectorAll(".profile-card");
       if (!cards.length) return;
       let sum = 0, count = 0;
@@ -300,15 +411,16 @@
     state.resizeObserver.observe(feed);
   }
 
-  // A scroll-distance fallback guarantees the sentinel cannot permanently stall the feed.
-  let fallbackTicks = 0;
-  function fallbackCheck() {
-    fallbackTicks++;
-    if (document.documentElement.scrollHeight - (window.scrollY + window.innerHeight) < PREFETCH_PX && !state.busy) generateBatch();
-    if (fallbackTicks < 3 || state.generated < 100) requestAnimationFrame(fallbackCheck);
-  }
+  // Browser visibility changes pause motion but not generation reliability.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) ensureRunway();
+  });
 
-  // First batch is immediate; no artificial loading state.
-  for (let i=0; i<2; i++) generateBatch();
-  requestAnimationFrame(() => { ensureWindow(true); fallbackCheck(); });
+  // The first batch is generated immediately. Then fill the runway before the first bottom
+  // can be reached; the feed grows by real cards, never by an empty spacer.
+  appendBatch();
+  requestAnimationFrame(ensureRunway);
+  window.setTimeout(ensureRunway, 150);
+  window.setTimeout(generationWatchdog, 180);
+
 })();
