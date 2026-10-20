@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08070c">
+  <meta name="description" content="NYXAVORYN — The Infinite Archive of Identities">
+  <title>NYXAVORYN — Infinite Archive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="wordmark" href="#" aria-label="NYXAVORYN home"><span class="mark">N</span><span>NYXAVORYN</span></a>
+    <div class="top-meta"><span class="live-dot"></span><span>ARCHIVE ONLINE</span><span class="meta-divider">/</span><span id="shown-count">INITIALIZING</span></div>
+    <button class="search-trigger" id="search-open" aria-label="Search identity" title="Search identity"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.2 4.2"></path></svg></button>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div class="eyebrow"><span class="eyebrow-line"></span> THE INFINITE ARCHIVE OF IDENTITIES</div>
+      <h1>Every identity<br><span>is a universe.</span></h1>
+      <div class="intro-bottom"><p>A living index of fictional consciousness.<br>Enter anywhere. There is no final record.</p><div class="index-stamp"><span>INDEX</span><strong>∞</strong><span>NO. LIMIT</span></div></div>
+    </section>
+
+    <section class="archive-head" aria-label="Archive controls">
+      <div><span class="section-kicker">THE ARCHIVE</span><h2>Uncatalogued lives</h2></div>
+      <div class="feed-state"><span class="state-pulse"></span><span>CONTINUOUS INDEXING</span></div>
+    </section>
+
+    <div id="virtual-top" aria-hidden="true"></div>
+    <section id="feed" class="profile-grid" aria-label="Infinite identity profiles"></section>
+    <div id="virtual-bottom" aria-hidden="true"></div>
+    <div id="sentinel" class="sentinel" aria-hidden="true"><span></span><span></span><span></span></div>
+  </main>
+
+  <div class="search-overlay" id="search-overlay" aria-hidden="true">
+    <div class="search-panel" role="dialog" aria-modal="true" aria-labelledby="search-title">
+      <button class="close-button" id="search-close" aria-label="Close search">×</button>
+      <span class="section-kicker">DIRECT ACCESS / 01</span>
+      <h2 id="search-title">Find an identity.</h2>
+      <p>Enter any positive integer. The archive can resolve it without traversing previous records.</p>
+      <form id="search-form">
+        <label class="sr-only" for="identity-input">Identity number</label>
+        <span class="input-prefix">#</span>
+        <input id="identity-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="Identity number…" aria-describedby="search-error">
+        <button type="submit" class="resolve-button">RESOLVE <span>↗</span></button>
+      </form>
+      <p id="search-error" class="search-error" role="status"></p>
+      <div class="search-hint"><span>STRING-BASED IDENTIFIER</span><span>NO UPPER BOUND</span></div>
+    </div>
+  </div>
+
+  <div class="detail-overlay" id="detail-overlay" aria-hidden="true">
+    <div class="detail-shell" role="dialog" aria-modal="true" aria-labelledby="detail-name">
+      <button class="detail-back" id="detail-back"><span>←</span> BACK TO ARCHIVE</button>
+      <div id="detail-content"></div>
+    </div>
+  </div>
+  <footer class="footer"><span>NYXAVORYN / ARCHIVE PROTOCOL 01</span><span>THE INDEX CONTINUES <b>∞</b></span></footer>
+  <script src="script.js"></script>
+</body>
+</html>
